@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\xc4Q۽I\x7f")
