@@ -1,4 +1,4 @@
-package eip4788
+package systest
 
 import (
 	"bytes"

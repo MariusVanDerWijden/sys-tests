@@ -1,4 +1,4 @@
-module github.com/MariusVanDerWijden/go-snippets/eip4788
+module github.com/MariusVanDerWijden/sys-test
 
 go 1.21
 
