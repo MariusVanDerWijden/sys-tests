@@ -3,6 +3,7 @@ package systest
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -28,6 +29,32 @@ func TestEIP7002(t *testing.T) {
 	)
 	value := new(big.Int).SetUint64(uint64(val))
 	CallSet7002(input, value)
+}
+
+func TestEIP7002ExcessInhibitor(t *testing.T) {
+	var (
+		input = []byte("000100A2200000708010201100101170\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+		val   = 20
+		value = new(big.Int).SetUint64(uint64(val))
+	)
+
+	addr := common.HexToAddress(precompileAddress)
+	caller := common.HexToAddress("0x1")
+	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabase(rawdb.NewDatabase(memorydb.New())), nil)
+	statedb.SetCode(addr, common.FromHex(code7002))
+	statedb.CreateAccount(caller)
+	statedb.SetBalance(caller, value)
+	// set the excess inhibitor
+	statedb.SetState(addr, Uint64ToHash(slot_excess), common.HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"))
+	statedb2 := statedb.Copy()
+	// Store
+	err := set7002(input, value, statedb, statedb2)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, excessInhibitorRevert) {
+		t.Fatalf("unexpected error, got %v", err)
+	}
 }
 
 func FuzzEIP7002GetSet(f *testing.F) {

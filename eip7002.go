@@ -19,8 +19,9 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-var deploymentCode7002 = "0x61049d5f556101af80600f5f395ff33373fffffffffffffffffffffffffffffffffffffffe1460a0573615156028575f545f5260205ff35b36603814156101ab5760115f54600182026001905f5b5f82111560595781019083028483029004916001019190603e565b9093900434106101ab57600154600101600155600354806003026004013381556001015f35815560010160203590553360601b5f5260385f601437604c5fa0600101600355005b6003546002548082038060101160b4575060105b5f5b8181146101585780604c02838201600302600401805490600101805490600101549160601b83528260140152807fffffffffffffffffffffffffffffffff0000000000000000000000000000000016826034015260401c906044018160381c81600701538160301c81600601538160281c81600501538160201c81600401538160181c81600301538160101c81600201538160081c81600101535360010160b6565b910180921461016a5790600255610175565b90505f6002555f6003555b5f548061049d141561018457505f5b6001546002828201116101995750505f61019f565b01600290035b5f555f600155604c025ff35b5f5ffd"
 var code7002 = "0x3373fffffffffffffffffffffffffffffffffffffffe1460c7573615156028575f545f5260205ff35b36603814156101f05760115f54807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff146101f057600182026001905f5b5f821115608057810190830284830290049160010191906065565b9093900434106101f057600154600101600155600354806003026004013381556001015f35815560010160203590553360601b5f5260385f601437604c5fa0600101600355005b6003546002548082038060101160db575060105b5f5b81811461017f5780604c02838201600302600401805490600101805490600101549160601b83528260140152807fffffffffffffffffffffffffffffffff0000000000000000000000000000000016826034015260401c906044018160381c81600701538160301c81600601538160281c81600501538160201c81600401538160181c81600301538160101c81600201538160081c81600101535360010160dd565b9101809214610191579060025561019c565b90505f6002555f6003555b5f54807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff14156101c957505f5b6001546002828201116101de5750505f6101e4565b01600290035b5f555f600155604c025ff35b5f5ffd"
+
+var excessInhibitorRevert = errors.New("excess inhibitor caused revert")
 
 const (
 	slot_excess  = 0
@@ -61,7 +62,8 @@ func set7002(input []byte, value *big.Int, statedb, statedb2 *state.StateDB) err
 	config := vm.Config{Tracer: logger}
 	out2, _, err2 := runtime.Call(addr, input, &runtime.Config{ChainConfig: params.AllDevChainProtocolChanges, Origin: caller, Value: value, Time: 0, State: statedb2, Debug: true, EVMConfig: config})
 	if err1 != nil && err2 != nil {
-		return errors.New("two errors")
+		// if we have two errors, return from our implementation, so we can check its the correct error
+		return err1
 	}
 	if err1 != nil || err2 != nil {
 		panic(fmt.Sprintf("%v%v", err1, err2))
@@ -164,7 +166,7 @@ func testCode7002(caller common.Address, calldata []byte, value *big.Int, state 
 		}
 		// update new excess withdrawal requests
 		excess := new(big.Int).SetBytes(state.GetState(addr, common.BytesToHash(binary.BigEndian.AppendUint32([]byte{}, uint32(slot_excess)))).Bytes()) // sload(queue_head)
-		if excess.Uint64() == 1181 {
+		if bytes.Equal(excess.Bytes(), common.FromHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")) {
 			excess.SetUint64(0)
 		}
 		countSlot := new(big.Int).SetBytes(state.GetState(addr, common.BytesToHash(binary.BigEndian.AppendUint32([]byte{}, uint32(slot_count)))).Bytes()) // sload(slot_count)
@@ -188,6 +190,9 @@ func testCode7002(caller common.Address, calldata []byte, value *big.Int, state 
 				return nil, nil, errors.New("invalid size")
 			}
 			excess_reqs := state.GetState(addr, common.BytesToHash(binary.BigEndian.AppendUint32([]byte{}, uint32(slot_excess)))) // sload(excess_reqs)
+			if bytes.Equal(excess_reqs.Bytes(), common.FromHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")) {
+				return nil, nil, excessInhibitorRevert
+			}
 			req_fee := calcReqFee(big.NewInt(1), new(big.Int).SetBytes(excess_reqs.Bytes()), big.NewInt(17))
 			if value.Cmp(req_fee) < 0 {
 				return nil, nil, errors.New("to little fee")
@@ -214,7 +219,7 @@ func testCode7002(caller common.Address, calldata []byte, value *big.Int, state 
 			logData = append(logData, calldata...)
 			// store queue tail
 			tail_idx.Add(tail_idx, big.NewInt(1))
-			state.SetState(addr, common.BigToHash(big.NewInt(queue_tail)), common.BytesToHash(tail_idx.Bytes())) // sstore(slot, pk[32:48]..amount)
+			state.SetState(addr, common.BigToHash(big.NewInt(queue_tail)), common.BytesToHash(tail_idx.Bytes())) // sstore(queue_tail, tail_idx)
 			fmt.Printf("Setting %x to %x\n", common.BigToHash(big.NewInt(queue_tail)), common.BytesToHash(tail_idx.Bytes()))
 			return nil, logData, nil
 		}
