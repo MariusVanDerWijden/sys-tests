@@ -3,7 +3,6 @@ package systest
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -15,49 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 )
 
-func FuzzEIP7002(f *testing.F) {
-	f.Fuzz(func(t *testing.T, input []byte, valueB uint64) {
-		value := new(big.Int).SetUint64(valueB)
-		CallSet7002(input, value)
-	})
-}
-
-func TestEIP7002(t *testing.T) {
-	var (
-		input = []byte("000100A2200000708010201100101170\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-		val   = 20
-	)
-	value := new(big.Int).SetUint64(uint64(val))
-	CallSet7002(input, value)
-}
-
-func TestEIP7002ExcessInhibitor(t *testing.T) {
-	var (
-		input = []byte("000100A2200000708010201100101170\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-		val   = 20
-		value = new(big.Int).SetUint64(uint64(val))
-	)
-
-	addr := common.HexToAddress(precompileAddress)
-	caller := common.HexToAddress("0x1")
-	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabase(rawdb.NewDatabase(memorydb.New())), nil)
-	statedb.SetCode(addr, common.FromHex(code7002))
-	statedb.CreateAccount(caller)
-	statedb.SetBalance(caller, value)
-	// set the excess inhibitor
-	statedb.SetState(addr, Uint64ToHash(slot_excess), common.HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"))
-	statedb2 := statedb.Copy()
-	// Store
-	err := set7002(input, value, statedb, statedb2)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !errors.Is(err, errExcessInhibitorRevert) {
-		t.Fatalf("unexpected error, got %v", err)
-	}
-}
-
-func FuzzEIP7002GetSet(f *testing.F) {
+func FuzzEIP7251GetSet(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input []byte) {
 		var (
 			valueSum = new(big.Int)
@@ -78,14 +35,14 @@ func FuzzEIP7002GetSet(f *testing.F) {
 		addr := common.HexToAddress(precompileAddress)
 		caller := common.HexToAddress("0x1")
 		statedb, _ := state.New(types.EmptyRootHash, state.NewDatabase(rawdb.NewDatabase(memorydb.New())), nil)
-		statedb.SetCode(addr, common.FromHex(code7002))
+		statedb.SetCode(addr, common.FromHex(code7251))
 		statedb.CreateAccount(caller)
 		statedb.SetBalance(caller, valueSum)
 		statedb2 := statedb.Copy()
 		// Store
 		for i := 0; i < min(len(inputs), len(valueB)); i++ {
 			value := new(big.Int).SetUint64(valueB[i])
-			if err := set7002(input, value, statedb, statedb2); err != nil {
+			if err := set7251(input, value, statedb, statedb2); err != nil {
 				continue
 			}
 		}
@@ -103,18 +60,27 @@ func FuzzEIP7002GetSet(f *testing.F) {
 			fmt.Printf("%x\n", statedb2.GetBalance(caller))
 			fmt.Printf("%x\n", statedb.GetBalance(addr))
 			fmt.Printf("%x\n", statedb2.GetBalance(addr))
-			fmt.Printf("%#v\n", statedb.GetOrNewStateObject(caller))
-			fmt.Printf("%#v\n", statedb2.GetOrNewStateObject(caller))
+			fmt.Printf("%#v\n", statedb.GetOrNewStateObject(addr))
+			fmt.Printf("%#v\n", statedb2.GetOrNewStateObject(addr))
 			fmt.Printf("%s\n", statedb.Dump(nil))
 			fmt.Printf("%s\n", statedb2.Dump(nil))
 
 			panic(fmt.Sprintf("roots mismatch %v \n%v\n", hash1, hash2))
 		}
 		// now we do the get
-		get7002(statedb, statedb2)
+		get7251(statedb, statedb2)
 		hash1, _ = statedb.Commit(0, false)
 		hash2, _ = statedb2.Commit(0, false)
 		if !bytes.Equal(hash1[:], hash2[:]) {
+			fmt.Printf("%x\n", statedb.GetBalance(caller))
+			fmt.Printf("%x\n", statedb2.GetBalance(caller))
+			fmt.Printf("%x\n", statedb.GetBalance(addr))
+			fmt.Printf("%x\n", statedb2.GetBalance(addr))
+			fmt.Printf("%#v\n", statedb.GetOrNewStateObject(caller))
+			fmt.Printf("%#v\n", statedb2.GetOrNewStateObject(caller))
+			fmt.Printf("%s\n", statedb.Dump(nil))
+			fmt.Printf("%s\n", statedb2.Dump(nil))
+
 			panic(fmt.Sprintf("roots mismatch after get %v \n%v\n", hash1, hash2))
 		}
 	})

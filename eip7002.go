@@ -21,7 +21,7 @@ import (
 
 var code7002 = "0x3373fffffffffffffffffffffffffffffffffffffffe1460c7573615156028575f545f5260205ff35b36603814156101f05760115f54807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff146101f057600182026001905f5b5f821115608057810190830284830290049160010191906065565b9093900434106101f057600154600101600155600354806003026004013381556001015f35815560010160203590553360601b5f5260385f601437604c5fa0600101600355005b6003546002548082038060101160db575060105b5f5b81811461017f5780604c02838201600302600401805490600101805490600101549160601b83528260140152807fffffffffffffffffffffffffffffffff0000000000000000000000000000000016826034015260401c906044018160381c81600701538160301c81600601538160281c81600501538160201c81600401538160181c81600301538160101c81600201538160081c81600101535360010160dd565b9101809214610191579060025561019c565b90505f6002555f6003555b5f54807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff14156101c957505f5b6001546002828201116101de5750505f6101e4565b01600290035b5f555f600155604c025ff35b5f5ffd"
 
-var excessInhibitorRevert = errors.New("excess inhibitor caused revert")
+var errExcessInhibitorRevert = errors.New("excess inhibitor caused revert")
 
 const (
 	slot_excess  = 0
@@ -180,7 +180,7 @@ func testCode7002(caller common.Address, calldata []byte, value *big.Int, state 
 		}
 		state.SetState(addr, Uint64ToHash(uint64(slot_excess)), common.BigToHash(excess))   // sstore(slot_excess, excess)
 		state.SetState(addr, Uint64ToHash(uint64(slot_count)), common.BigToHash(countSlot)) // sstore(slot_count, countSlot)
-		return nil, memory, nil
+		return memory, nil, nil
 	} else {
 		if len(calldata) == 0 {
 			excess_reqs := state.GetState(addr, common.BytesToHash(binary.BigEndian.AppendUint32([]byte{}, uint32(slot_excess)))) // sload(excess_reqs)
@@ -191,7 +191,7 @@ func testCode7002(caller common.Address, calldata []byte, value *big.Int, state 
 			}
 			excess_reqs := state.GetState(addr, common.BytesToHash(binary.BigEndian.AppendUint32([]byte{}, uint32(slot_excess)))) // sload(excess_reqs)
 			if bytes.Equal(excess_reqs.Bytes(), common.FromHex("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")) {
-				return nil, nil, excessInhibitorRevert
+				return nil, nil, errExcessInhibitorRevert
 			}
 			req_fee := calcReqFee(big.NewInt(1), new(big.Int).SetBytes(excess_reqs.Bytes()), big.NewInt(17))
 			if value.Cmp(req_fee) < 0 {
